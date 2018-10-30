@@ -347,5 +347,160 @@
 ;; BUT many fn's return a lazy seq so the values are only computed once when you try to access them
 (def vampire-database
   {0 {:makes-blood-puns? false :has-pulse? true :name "McFishwich"}
-   1 {:makes-blood-puns? false :has-pulse? true :name "McMakson"}
-   2 {}})
+    1 {:makes-blood-puns? false :has-pulse? true :name "McMakson"}
+    2 {:makes-blood-puns? true :has-pulse? false :name "Damon Salvatore"}
+    3 {:makes-blood-puns? true :has-pulse? true :name "Mickey Mouse"}})
+
+(defn vampire-related-details
+  "Gets the vampire by security number"
+  [social-security-number]
+  ;(Thread/sleep 1000)
+  (get vampire-database social-security-number))
+
+(defn vampire?
+  [record]
+  (and (:makes-blood-puns? record)
+       (not (:has-pulse? record))
+       record))
+
+(defn identify-vampire
+  [social-security-numbers]
+  (first (filter vampire?
+                 (map vampire-related-details social-security-numbers))))
+
+(time (vampire-related-details 0)) ;; -> returns "Elapsed time: 1001.042 msecs" and then the db record
+;; If we have a million records it would take 1000 msec * 10^6 to find each vampire
+;; Maps are lazy however so we won't get any values until we try and access the mapped element
+;; EX
+(time (def mapped-details (map vampire-related-details (range 0 100000)))) ;; -> Elapsed time 0.049 msecs
+;; The above returns a function without evaluating all the potential mapped-details and since it's never used it takes practically no time
+
+;; Now when we access it we will incur the whole cost of the lookup
+(time (first mapped-details)) ;; -> Elapsed time: 32030.767 msecs
+;; this only took 32 seconds, but it's weird we should have only taken 1 secons accessing one element
+;; the time is not 1 million seconds tho. The reason for this is that Clojure "chunks" it's lazy sequences
+;; so it prepared the first 32 values for this evaluation
+;; however calling it again doesn't incur the same cost as the seq has already been realized
+(time (first mapped-details)) ;; -> Elapsed time: 0.022 msecs
+
+;; now we know that we can efficiently mine the campire database to find the culprit
+(time (identify-vampire (range 0 1000000))) ;;-> Elapsed time: 32019.912 msecs
+;; That's way better than a million
+
+;; Another cool thing about clojure sequences is that they can be infinite!
+(concat (take 8 (repeat "na")) ["Batman!"])
+;; repeat here uses a non-terminating sequence
+;; we can also use the repeatedly fn to call a function each time
+(take 3 (repeatedly (fn [] (rand-int 100))))
+
+(defn even-numbers
+  ([] (even-numbers 0))
+  ([n] (cons n (lazy-seq (even-numbers (+ n 2))))))
+
+(take 10 (even-numbers))
+
+;; THE COLLECTION ABSTRACTION
+;; It's very similar to the seq abstraction
+(empty? [])
+(empty? ["no"])
+;; one of the most important function is "into"
+;; it will return the original data structure instead of just returning a seq
+(map identity {:sunlight-reaction "Glitter!"})
+
+(into {} (map identity {:sunlight-reation "Glitter"}))
+;; the first collection doesn't have to be empty
+(into ["cherry"] '("pine" "maple")) ;; => ["cherry "pine" "maple"]
+
+(into {:tiny-boy "tim"} {:tiniest-tot "taters"
+                         :meatiest-tiny "thicccc"})
+;; -> {:tiny-boy "tim", :tiniest-tot "taters", :meatiest-tiny "thicccc"}
+;; Conj is a similar function but does things in a different way
+(conj [0] [1]) ;; => [0 [1]]
+(conj [0] 1) ;; => [0 1]
+(conj {:time "midnight"} [:place "spooky town"]) ;; => {:time "midnight", :place "spooky town"}
+
+;; you could define conj in terms of into if you wanted
+(defn my-conj
+  [target & additions]
+  (into target additions))
+
+(my-conj [0] 1 2 3) ;;=> [0 1 2 3]
+
+;; In Clojure this pattern isnt uncommon
+;; often a function with do the same thing only one will take a rest param (conj) and the other
+;; will take a sequelable data struction (into)
+
+
+;; FUNCTION FUNCTIONS
+;; Clojure does a lot and lets you take functions as an arguement and returns functions this is cool
+;; Lets talk about apply and partial two examples of how cool this can be
+
+;; apply
+;; apply explodes a sequeable data structure so it can be passed to a function that expects a rest parameter
+(max 0 1 2); => 2
+;; but what if you wanted to find the greatest val in a vector
+(max [0 1 2]) ; => [0 1 2]
+;; bummer
+;; lets try with apply
+(apply max [0 1 2]); => 2
+
+;; it's possible touse apply and conj to create an into
+(defn my-into
+  [target additions]
+  (apply conj target additions))
+(my-into [0] [1 2 3]) ; => [0 1 2 3]
+
+;; partial takes a function and any number of args then returns a new fn
+;; When you return the fn it calls the original with the og args you supplied and NEW args
+(def add10 (partial + 10))
+(add10 3) ; => 13
+
+(def add-missing-elements
+  (partial conj ["water" "earth" "air"]))
+(add-missing-elements "fire" "glue")
+
+;; we can define it
+(defn my-partial
+  [partialized-fn & args]
+  (fn [& more-args]
+    (apply partialized-fn (into args more-args))))
+(def add20 (my-partial + 20))
+(add20 3); => 23
+
+;; in general we want to use partials when we are repeating the same combination of fns and args in different contexts (you could imagine checking a users permissions this way)
+;; here's a example logger toy
+(defn lousy-logger
+  [log-level message]
+  (condp = log-level
+    :warn (clojure.string/lower-case message)
+    :emergency (clojure.string/upper-case message)))
+
+(def warn (partial lousy-logger :warn))
+(warn "Red light ahead") ; "red light ahead"
+;; calling warn here is the same as calling (lousy-logger :warn "Red light ahead")
+
+;; Complement
+;; early we defined an identify-vampire function to find one vampire amid a million people
+;; what if we wanted to create a function to find all humans
+(defn identify-humans
+  [social-security-numbers]
+  (filter #(not (vampire? %))
+          (map vampire-related-details social-security-numbers)))
+
+;; the section #(not (vampire? %)) is so common there's a complement fn for it
+(def not-vampire? (complement vampire?))
+(defn identify-humans2
+  [social-security-numbers]
+  (filter not-vampire?
+          (map vampire-related-details social-security-numbers)))
+
+(identify-humans2 [0 1 2 3])
+
+;; here's what complement looks like
+(defn my-complement
+  [fun]
+  (fn [& args]
+    (not (apply fun args))))
+(def my-pos? (complement neg?))
+(my-pos? 1) ; -> true
+(my-pos? -1) ; -> false
