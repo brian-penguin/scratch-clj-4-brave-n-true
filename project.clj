@@ -6,4 +6,5 @@
   :dependencies [[org.clojure/clojure "1.8.0"]]
   :main ^:skip-aot brave-n-true.core
   :target-path "target/%s"
+  :resource-paths ["resources"]
   :profiles {:uberjar {:aot :all}})

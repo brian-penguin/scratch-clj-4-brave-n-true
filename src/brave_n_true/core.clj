@@ -504,3 +504,7 @@
 (def my-pos? (complement neg?))
 (my-pos? 1) ; -> true
 (my-pos? -1) ; -> false
+
+
+(def filename "suspects.csv")
+(slurp filename)
