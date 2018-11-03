@@ -1,10 +1,10 @@
 # brave-n-true
 
-FIXME: description
+Just working through the Clojure for the Brave and True as a first intro to Clojure
 
 ## Installation
 
-Download from http://example.com/FIXME.
+Clone and use lein
 
 ## Usage
 
